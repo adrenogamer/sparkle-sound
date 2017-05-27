@@ -6,6 +6,3 @@ gcc \
 -lasound \
 pcm_oss.c
 
-
-gcc -o tester tester.c -ldl
-

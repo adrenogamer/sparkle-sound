@@ -24,6 +24,8 @@
 #include <alsa/pcm_external.h>
 #include <linux/soundcard.h>
 
+#define SPARKLE_MODE
+
 typedef struct snd_pcm_oss {
 	snd_pcm_ioplug_t io;
 	char *device;
@@ -49,6 +51,9 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 	buf = (char *)areas->addr + (areas->first + areas->step * offset) / 8;
 	size *= oss->frame_bytes;
 	result = write(oss->fd, buf, size);
+#ifdef SPARKLE_MODE
+    fprintf(stderr, "WRITE RESULT: %d\n", result);
+#endif
 	if (result <= 0)
 		return result;
 	return result / oss->frame_bytes;
@@ -78,11 +83,13 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
 	struct count_info info;
 	int ptr;
 
+#ifndef SPARKLE_MODE
 	if (ioctl(oss->fd, io->stream == SND_PCM_STREAM_PLAYBACK ?
 		  SNDCTL_DSP_GETOPTR : SNDCTL_DSP_GETIPTR, &info) < 0) {
 		fprintf(stderr, "*** OSS: oss_pointer error\n");
 		return 0;
 	}
+#endif
 	ptr = snd_pcm_bytes_to_frames(io->pcm, info.ptr);
 	return ptr;
 }
@@ -93,7 +100,11 @@ static int oss_start(snd_pcm_ioplug_t *io)
 	int tmp = io->stream == SND_PCM_STREAM_PLAYBACK ?
 		PCM_ENABLE_OUTPUT : PCM_ENABLE_INPUT;
 
+#ifndef SPARKLE_MODE
 	if (ioctl(oss->fd, SNDCTL_DSP_SETTRIGGER, &tmp) < 0) {
+#else
+	if (0) {
+#endif
 		fprintf(stderr, "*** OSS: trigger failed\n");
 		if (io->stream == SND_PCM_STREAM_CAPTURE)
 			/* fake read to trigger */
@@ -125,6 +136,7 @@ static int oss_prepare(snd_pcm_ioplug_t *io)
 	snd_pcm_oss_t *oss = io->private_data;
 	int tmp;
 
+#ifndef SPARKLE_MODE
 	ioctl(oss->fd, SNDCTL_DSP_RESET);
 
 	tmp = io->channels;
@@ -143,6 +155,8 @@ static int oss_prepare(snd_pcm_ioplug_t *io)
 		perror("SNDCTL_DSP_SPEED");
 		return -EINVAL;
 	}
+#endif
+
 	return 0;
 }
 
@@ -185,7 +199,11 @@ static int oss_hw_params(snd_pcm_ioplug_t *io,
 
  _retry:
 	tmp = oss->period_shift | (oss->periods << 16);
+#ifndef SPARKLE_MODE
 	if (ioctl(oss->fd, SNDCTL_DSP_SETFRAGMENT, &tmp) < 0) {
+#else
+	if (0) {
+#endif
 		if (! oss->fragment_set) {
 			perror("SNDCTL_DSP_SETFRAGMENT");
 			fprintf(stderr, "*** period shift = %d, periods = %d\n", oss->period_shift, oss->periods);
@@ -356,7 +374,11 @@ static const snd_pcm_ioplug_callback_t oss_capture_callback = {
 SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 {
 	snd_config_iterator_t i, next;
+#ifndef SPARKLE_MODE
 	const char *device = "/dev/dsp";
+#else
+	const char *device = "/tmp/sound";
+#endif
 	int err;
 	snd_pcm_oss_t *oss;
 	
