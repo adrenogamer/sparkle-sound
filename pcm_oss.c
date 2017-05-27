@@ -118,7 +118,9 @@ static int oss_stop(snd_pcm_ioplug_t *io)
 	snd_pcm_oss_t *oss = io->private_data;
 	int tmp = 0;
 
+#ifndef SPARKLE_MODE
 	ioctl(oss->fd, SNDCTL_DSP_SETTRIGGER, &tmp);
+#endif
 	return 0;
 }
 
@@ -126,8 +128,10 @@ static int oss_drain(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
+#ifndef SPARKLE_MODE
 	if (io->stream == SND_PCM_STREAM_PLAYBACK)
 		ioctl(oss->fd, SNDCTL_DSP_SYNC);
+#endif
 	return 0;
 }
 
@@ -170,15 +174,19 @@ static int oss_hw_params(snd_pcm_ioplug_t *io,
 
 	oss->frame_bytes = (snd_pcm_format_physical_width(io->format) * io->channels) / 8;
 	switch (io->format) {
+#ifndef SPARKLE_MODE
 	case SND_PCM_FORMAT_U8:
 		oss->format = AFMT_U8;
 		break;
+#endif
 	case SND_PCM_FORMAT_S16_LE:
 		oss->format = AFMT_S16_LE;
 		break;
+#ifndef SPARKLE_MODE
 	case SND_PCM_FORMAT_S16_BE:
 		oss->format = AFMT_S16_BE;
 		break;
+#endif
 	default:
 		fprintf(stderr, "*** OSS: unsupported format %s\n", snd_pcm_format_name(io->format));
 		return -EINVAL;
@@ -269,10 +277,12 @@ static int oss_hw_constraint(snd_pcm_oss_t *oss)
 
 	/* check trigger */
 	oss->caps = 0;
+#ifndef SPARKLE_MODE
 	if (ioctl(oss->fd, SNDCTL_DSP_GETCAPS, &oss->caps) >= 0) {
 		if (! (oss->caps & DSP_CAP_TRIGGER))
 			fprintf(stderr, "*** OSS: trigger is not supported!\n");
 	}
+#endif
 
 	/* access type - interleaved only */
 	if ((err = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_ACCESS,
@@ -280,6 +290,7 @@ static int oss_hw_constraint(snd_pcm_oss_t *oss)
 		return err;
 
 	/* supported formats */
+#ifndef SPARKLE_MODE
 	tmp = 0;
 	ioctl(oss->fd, SNDCTL_DSP_GETFMTS, &tmp);
 	nformats = 0;
@@ -291,6 +302,10 @@ static int oss_hw_constraint(snd_pcm_oss_t *oss)
 		format[nformats++] = SND_PCM_FORMAT_S16_BE;
 	if (tmp & AFMT_MU_LAW)
 		format[nformats++] = SND_PCM_FORMAT_MU_LAW;
+#else
+    nformats = 0;
+    format[nformats++] = SND_PCM_FORMAT_S16_LE;
+#endif
 	if (! nformats)
 		format[nformats++] = SND_PCM_FORMAT_S16;
 	if ((err = snd_pcm_ioplug_set_param_list(io, SND_PCM_IOPLUG_HW_FORMAT,
@@ -299,11 +314,13 @@ static int oss_hw_constraint(snd_pcm_oss_t *oss)
 	
 	/* supported channels */
 	nchannels = 0;
+#ifndef SPARKLE_MODE
 	for (i = 0; i < 6; i++) {
 		tmp = i + 1;
 		if (ioctl(oss->fd, SNDCTL_DSP_CHANNELS, &tmp) >= 0)
 			channel[nchannels++] = tmp;
 	}
+#endif
 	if (! nchannels) /* assume 2ch stereo */
 		err = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_CHANNELS,
 						      2, 2);
@@ -315,7 +332,11 @@ static int oss_hw_constraint(snd_pcm_oss_t *oss)
 
 	/* supported rates */
 	/* FIXME: should query? */
+#ifndef SPARKLE_MODE
 	err = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_RATE, 8000, 480000);
+#else
+	err = snd_pcm_ioplug_set_param_minmax(io, SND_PCM_IOPLUG_HW_RATE, 44100, 44100);
+#endif
 	if (err < 0)
 		return err;
 
@@ -450,3 +471,5 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 }
 
 SND_PCM_PLUGIN_SYMBOL(oss);
+
+
