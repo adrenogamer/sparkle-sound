@@ -1,1 +1,1 @@
-/home/sion/sparkle-video/src/shared_resource.h
+../sparkle-video/src/shared_resource.h

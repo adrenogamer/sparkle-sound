@@ -1,5 +1,5 @@
 #!/bin/sh
 
 sudo cp ./libasound_module_pcm_oss.so /usr/lib/alsa-lib/
-mplayer -ao alsa ../01.mp3
+sudo mplayer -ao alsa ../01.mp3
 
