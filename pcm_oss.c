@@ -31,6 +31,7 @@
 #ifdef SPARKLE_MODE
 #include <stdint.h>
 #include <time.h>
+#include <errno.h>
 #endif
 
 
@@ -63,7 +64,13 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 #ifndef SPARKLE_MODE
 	result = write(oss->fd, buf, size);
 #else
-    result = size;
+    //result = size;
+	result = write(oss->fd, buf, size);
+    if (result == -1 && errno == 11)
+    {
+        //fprintf(stderr, "ERROR! %d\n", errno);
+        result = 0;
+    }
 #endif
 	if (result <= 0)
 		return result;
@@ -258,6 +265,7 @@ static int oss_hw_params(snd_pcm_ioplug_t *io,
 	}
 	oss->fragment_set = 1;
 
+#ifndef SPARKLE_MODE
 	if ((flags = fcntl(oss->fd, F_GETFL)) < 0) {
 		err = -errno;
 		perror("F_GETFL");
@@ -273,6 +281,7 @@ static int oss_hw_params(snd_pcm_ioplug_t *io,
 			perror("F_SETFL");
 		}
 	}
+#endif
 
 	return 0;
 }
@@ -455,8 +464,13 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		free(oss);
 		return -ENOMEM;
 	}
+#ifndef SPARKLE_MODE
 	oss->fd = open(device, stream == SND_PCM_STREAM_PLAYBACK ?
 		       O_WRONLY : O_RDONLY);
+#else
+	oss->fd = open(device, stream == SND_PCM_STREAM_PLAYBACK ?
+		       O_WRONLY | O_NONBLOCK : O_RDONLY | O_NONBLOCK);
+#endif
 	if (oss->fd < 0) {
 		err = -errno;
 		SNDERR("Cannot open device %s", device);
