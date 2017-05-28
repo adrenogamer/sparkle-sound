@@ -32,9 +32,15 @@
 #include <stdint.h>
 #include <time.h>
 #include <errno.h>
+#include "shared_resource.h"
 #endif
 
 
+struct sparkle_sound_shared_t
+{
+    uint32_t data;
+    char buffer[65536];
+};
 
 typedef struct snd_pcm_oss {
 	snd_pcm_ioplug_t io;
@@ -47,6 +53,10 @@ typedef struct snd_pcm_oss {
 	unsigned int periods;
 	unsigned int frame_bytes;
     struct timespec start;
+
+    struct shared_resource_t *sound_shared;
+    struct sparkle_sound_shared_t *shared;
+
 } snd_pcm_oss_t;
 
 static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
@@ -64,13 +74,16 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 #ifndef SPARKLE_MODE
 	result = write(oss->fd, buf, size);
 #else
-    //result = size;
-	result = write(oss->fd, buf, size);
-    if (result == -1 && errno == 11)
+    int wSize = size;
+    if (wSize > 65536)
     {
-        //fprintf(stderr, "ERROR! %d\n", errno);
-        result = 0;
+        wSize = 65536;
     }
+
+    memcpy(oss->shared->buffer, buf, wSize);
+    oss->shared->data = wSize;
+
+    result = wSize;
 #endif
 	if (result <= 0)
 		return result;
@@ -464,13 +477,8 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		free(oss);
 		return -ENOMEM;
 	}
-#ifndef SPARKLE_MODE
 	oss->fd = open(device, stream == SND_PCM_STREAM_PLAYBACK ?
 		       O_WRONLY : O_RDONLY);
-#else
-	oss->fd = open(device, stream == SND_PCM_STREAM_PLAYBACK ?
-		       O_WRONLY | O_NONBLOCK : O_RDONLY | O_NONBLOCK);
-#endif
 	if (oss->fd < 0) {
 		err = -errno;
 		SNDERR("Cannot open device %s", device);
@@ -479,6 +487,16 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 
 #ifdef SPARKLE_MODE
     clock_gettime(CLOCK_REALTIME, &oss->start);
+
+    oss->sound_shared = shared_resource_open("/dev/sparkle_sound", sizeof(struct sparkle_sound_shared_t), 0, (void **)&oss->shared);
+    if (oss->sound_shared == NULL)
+    {
+		SNDERR("Cannot open shared resources");
+        goto error;
+    }
+
+    oss->shared->data = 0;
+
 #endif
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;
