@@ -18,13 +18,22 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
  */
 
+#define SPARKLE_MODE
+
 #include <stdio.h>
+#ifndef SPARKLE_MODE
 #include <sys/ioctl.h>
+#endif
 #include <alsa/asoundlib.h>
 #include <alsa/pcm_external.h>
 #include <linux/soundcard.h>
 
-#define SPARKLE_MODE
+#ifdef SPARKLE_MODE
+#include <stdint.h>
+#include <time.h>
+#endif
+
+
 
 typedef struct snd_pcm_oss {
 	snd_pcm_ioplug_t io;
@@ -36,6 +45,7 @@ typedef struct snd_pcm_oss {
 	unsigned int period_shift;
 	unsigned int periods;
 	unsigned int frame_bytes;
+    struct timespec start;
 } snd_pcm_oss_t;
 
 static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
@@ -50,9 +60,10 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 	/* we handle only an interleaved buffer */
 	buf = (char *)areas->addr + (areas->first + areas->step * offset) / 8;
 	size *= oss->frame_bytes;
+#ifndef SPARKLE_MODE
 	result = write(oss->fd, buf, size);
-#ifdef SPARKLE_MODE
-    fprintf(stderr, "WRITE RESULT: %d\n", result);
+#else
+    result = size;
 #endif
 	if (result <= 0)
 		return result;
@@ -89,8 +100,19 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
 		fprintf(stderr, "*** OSS: oss_pointer error\n");
 		return 0;
 	}
-#endif
+
 	ptr = snd_pcm_bytes_to_frames(io->pcm, info.ptr);
+#else
+    struct timespec current;
+    clock_gettime(CLOCK_REALTIME, &current);
+
+    uint64_t elapsed = 0;
+    elapsed += 1000LL * (current.tv_sec - oss->start.tv_sec);
+    elapsed += (current.tv_nsec - oss->start.tv_nsec) / 1000000;
+
+    ptr = elapsed * 44100 / 1000;
+
+#endif
 	return ptr;
 }
 
@@ -440,6 +462,10 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		SNDERR("Cannot open device %s", device);
 		goto error;
 	}
+
+#ifdef SPARKLE_MODE
+    clock_gettime(CLOCK_REALTIME, &oss->start);
+#endif
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;
 	oss->io.name = "ALSA <-> OSS PCM I/O Plugin";
