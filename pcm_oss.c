@@ -8,17 +8,26 @@
 #include "shared_resource.h"
 
 
+struct sound_buffer_t
+{
+    char data[4096];
+};
+
 struct sparkle_sound_shared_t
 {
-    uint32_t size;
-    char buffer[65536];
+    uint32_t queuedBuffers;
+    uint32_t playedBuffers;
+    struct sound_buffer_t buffers[100];
 };
 
 
-typedef struct snd_pcm_oss {
+typedef struct snd_pcm_oss
+{
 	snd_pcm_ioplug_t io;
+
 	unsigned int frame_bytes;
 
+    int playing;
     struct timespec start;
 
     struct shared_resource_t *sparkle_sound;
@@ -43,17 +52,18 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 
 	//result = write(oss->fd, buf, size);
 
-    int wSize = size;
-    if (wSize > 65536)
+    int copySize = size;
+    if (copySize > 4096)
     {
-        wSize = 65536;
+        copySize = 4096;
     }
 
-    memcpy(oss->shared->buffer, buf, wSize);
-    oss->shared->size = wSize;
-    //fprintf(stderr, "Write %d \n", wSize);
+    memcpy(oss->shared->buffers[oss->shared->queuedBuffers % 100].data, buf, copySize);
+    //fprintf(stderr, "Queued buffers: %d, Last used buffer: %d  \n", oss->shared->queuedBuffers, oss->shared->queuedBuffers % 100);
 
-    result = wSize;
+    oss->shared->queuedBuffers += 1;
+
+    result = copySize;
 
 	if (result <= 0)
 		return result;
@@ -90,6 +100,12 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
 
 	int ptr;
 
+    if (!oss->playing)
+    {
+        ptr = 0;
+        return ptr;
+    }
+
     struct timespec current;
     clock_gettime(CLOCK_REALTIME, &current);
 
@@ -99,6 +115,8 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
 
     ptr = elapsed * 44100 / 1000;
 
+    //fprintf(stderr, "Played buffers: %d  \n", ptr*4/4096);
+
 	return ptr;
 }
 
@@ -106,12 +124,24 @@ static int oss_start(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
+    fprintf(stderr, "START\n");
+
+    //XXX Move to stop()?
+    oss->shared->queuedBuffers = 0;
+    oss->shared->playedBuffers = 0;
+
+    clock_gettime(CLOCK_REALTIME, &oss->start);
+
+    oss->playing = 1;
+
 	return 0;
 }
 
 static int oss_stop(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
+
+    fprintf(stderr, "STOP\n");
 
 	return 0;
 }
@@ -288,6 +318,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -ENOMEM;
 	}
 
+    oss->playing = 0;
 
     oss->sparkle_sound = shared_resource_open("/dev/sparkle_sound", sizeof(struct sparkle_sound_shared_t), 1, (void **)&oss->shared);
     if (!oss->sparkle_sound)
@@ -296,8 +327,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -EINVAL;
     }
 
-
-    clock_gettime(CLOCK_REALTIME, &oss->start);
 
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;
