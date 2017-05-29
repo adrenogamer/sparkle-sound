@@ -10,6 +10,7 @@
 
 struct sound_buffer_t
 {
+    int size;
     char data[4096];
 };
 
@@ -59,6 +60,7 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
     }
 
     memcpy(oss->shared->buffers[oss->shared->queuedBuffers % 100].data, buf, copySize);
+    oss->shared->buffers[oss->shared->queuedBuffers % 100].size = copySize;
     //fprintf(stderr, "Queued buffers: %d, Last used buffer: %d  \n", oss->shared->queuedBuffers, oss->shared->queuedBuffers % 100);
 
     oss->shared->queuedBuffers += 1;
@@ -124,7 +126,7 @@ static int oss_start(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
-    fprintf(stderr, "START\n");
+    //fprintf(stderr, "START\n");
 
     //XXX Move to stop()?
     oss->shared->queuedBuffers = 0;
@@ -141,7 +143,10 @@ static int oss_stop(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
-    fprintf(stderr, "STOP\n");
+    oss->shared->queuedBuffers = 0;
+    oss->shared->playedBuffers = 0;
+
+    //fprintf(stderr, "STOP\n");
 
     oss->playing = 0;
 
