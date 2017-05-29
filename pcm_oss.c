@@ -320,6 +320,7 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 
     oss->playing = 0;
 
+
     oss->sparkle_sound = shared_resource_open("/dev/sparkle_sound", sizeof(struct sparkle_sound_shared_t), 1, (void **)&oss->shared);
     if (!oss->sparkle_sound)
     {
@@ -327,6 +328,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -EINVAL;
     }
 
+
+    oss->shared->queuedBuffers = 0;
+    oss->shared->playedBuffers = 0;
 
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;
