@@ -143,6 +143,8 @@ static int oss_stop(snd_pcm_ioplug_t *io)
 
     fprintf(stderr, "STOP\n");
 
+    oss->playing = 0;
+
 	return 0;
 }
 
