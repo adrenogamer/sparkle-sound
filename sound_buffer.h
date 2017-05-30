@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define BUFFER_SIZE 1024*1024
+#define BUFFER_SIZE (1024*1024)
 
 struct sound_buffer_t
 {
@@ -15,5 +15,4 @@ int sound_buffer_get(struct sound_buffer_t *buffer, void **data, uint32_t readOf
 
 
 #endif //SOUND_BUFFER_H
-
 
