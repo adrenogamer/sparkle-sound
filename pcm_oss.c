@@ -14,6 +14,7 @@ struct sparkle_sound_shared_t
 {
     uint32_t queuedBytes;
     uint32_t expectedPlayedBytes;
+    uint32_t playedBytes;
     int play;
 
     struct sound_buffer_t buffer;
@@ -124,6 +125,7 @@ static int oss_stop(snd_pcm_ioplug_t *io)
     oss->shared->play = 0;
     oss->shared->queuedBytes = 0;
     oss->shared->expectedPlayedBytes = 0;
+    oss->shared->playedBytes = 0;
 
 	return 0;
 }
@@ -308,9 +310,10 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -EINVAL;
     }
 
+    oss->shared->play = 0;
     oss->shared->queuedBytes = 0;
     oss->shared->expectedPlayedBytes = 0;
-    oss->shared->play = 0;
+    oss->shared->playedBytes = 0;
 
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;

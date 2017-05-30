@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define BUFFER_SIZE 65536
+#define BUFFER_SIZE 1024*1024
 
 struct sound_buffer_t
 {
