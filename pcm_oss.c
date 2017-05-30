@@ -6,19 +6,17 @@
 #include <alsa/pcm_external.h>
 
 #include "shared_resource.h"
+#include "sound_buffer.h"
 
 
-struct sound_buffer_t
-{
-    int size;
-    char data[4096];
-};
 
 struct sparkle_sound_shared_t
 {
-    uint32_t queuedBuffers;
-    uint32_t playedBuffers;
-    struct sound_buffer_t buffers[100];
+    uint32_t queuedBytes;
+    uint32_t expectedPlayedBytes;
+    int play;
+
+    struct sound_buffer_t buffer;
 };
 
 
@@ -28,7 +26,6 @@ typedef struct snd_pcm_oss
 
 	unsigned int frame_bytes;
 
-    int playing;
     struct timespec start;
 
     struct shared_resource_t *sparkle_sound;
@@ -53,19 +50,8 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 
 	//result = write(oss->fd, buf, size);
 
-    int copySize = size;
-    if (copySize > 4096)
-    {
-        copySize = 4096;
-    }
-
-    memcpy(oss->shared->buffers[oss->shared->queuedBuffers % 100].data, buf, copySize);
-    oss->shared->buffers[oss->shared->queuedBuffers % 100].size = copySize;
-    //fprintf(stderr, "Queued buffers: %d, Last used buffer: %d  \n", oss->shared->queuedBuffers, oss->shared->queuedBuffers % 100);
-
-    oss->shared->queuedBuffers += 1;
-
-    result = copySize;
+    result = sound_buffer_write(&oss->shared->buffer, buf, oss->shared->queuedBytes, size);
+    oss->shared->queuedBytes += size;
 
 	if (result <= 0)
 		return result;
@@ -88,6 +74,7 @@ static snd_pcm_sframes_t oss_read(snd_pcm_ioplug_t *io,
 	size *= oss->frame_bytes;
 
 	//result = read(oss->fd, buf, size);
+
     result = size;
 
 	if (result <= 0)
@@ -100,12 +87,9 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
-	int ptr;
-
-    if (!oss->playing)
+    if (!oss->shared->play)
     {
-        ptr = 0;
-        return ptr;
+        return 0;
     }
 
     struct timespec current;
@@ -115,26 +99,20 @@ static snd_pcm_sframes_t oss_pointer(snd_pcm_ioplug_t *io)
     elapsed += 1000LL * (current.tv_sec - oss->start.tv_sec);
     elapsed += (current.tv_nsec - oss->start.tv_nsec) / 1000000;
 
-    ptr = elapsed * 44100 / 1000;
+    int frames = elapsed * 44100 / 1000;
 
-    //fprintf(stderr, "Played buffers: %d  \n", ptr*4/4096);
+    oss->shared->expectedPlayedBytes = frames * 4;
 
-	return ptr;
+	return frames;
 }
 
 static int oss_start(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
-    //fprintf(stderr, "START\n");
-
-    //XXX Move to stop()?
-    oss->shared->queuedBuffers = 0;
-    oss->shared->playedBuffers = 0;
-
     clock_gettime(CLOCK_REALTIME, &oss->start);
 
-    oss->playing = 1;
+    oss->shared->play = 1;
 
 	return 0;
 }
@@ -143,12 +121,9 @@ static int oss_stop(snd_pcm_ioplug_t *io)
 {
 	snd_pcm_oss_t *oss = io->private_data;
 
-    oss->shared->queuedBuffers = 0;
-    oss->shared->playedBuffers = 0;
-
-    //fprintf(stderr, "STOP\n");
-
-    oss->playing = 0;
+    oss->shared->play = 0;
+    oss->shared->queuedBytes = 0;
+    oss->shared->expectedPlayedBytes = 0;
 
 	return 0;
 }
@@ -325,8 +300,6 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -ENOMEM;
 	}
 
-    oss->playing = 0;
-
 
     oss->sparkle_sound = shared_resource_open("/dev/sparkle_sound", sizeof(struct sparkle_sound_shared_t), 1, (void **)&oss->shared);
     if (!oss->sparkle_sound)
@@ -335,9 +308,9 @@ SND_PCM_PLUGIN_DEFINE_FUNC(oss)
 		return -EINVAL;
     }
 
-
-    oss->shared->queuedBuffers = 0;
-    oss->shared->playedBuffers = 0;
+    oss->shared->queuedBytes = 0;
+    oss->shared->expectedPlayedBytes = 0;
+    oss->shared->play = 0;
 
 
 	oss->io.version = SND_PCM_IOPLUG_VERSION;

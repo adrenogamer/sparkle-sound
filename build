@@ -4,5 +4,6 @@ gcc \
 -o libasound_module_pcm_oss.so \
 -shared -fPIC -DPIC \
 -lasound \
-pcm_oss.c shared_resource.c
+pcm_oss.c shared_resource.c sound_buffer.c
+
 
