@@ -52,7 +52,7 @@ static snd_pcm_sframes_t oss_write(snd_pcm_ioplug_t *io,
 	//result = write(oss->fd, buf, size);
 
     result = sound_buffer_write(&oss->shared->buffer, buf, oss->shared->queuedBytes, size);
-    oss->shared->queuedBytes += size;
+    oss->shared->queuedBytes += result;
 
 	if (result <= 0)
 		return result;
